@@ -173,16 +173,23 @@ class Netbox2Aquilon(SCDNetbox):
                 if tag.slug == 'bootable':
                     is_boot_interface = True
 
+            is_lag_interface = hasattr(interface, 'type') and interface.type.value == 'lag'
+
             cmd = [
                 'add_interface',
                 '--machine', f'{device.aq_machine_name}',
-                '--mac', f'{interface.mac_address}',
                 '--interface', f'{interface.name}',
             ]
+            if interface.mac_address and not is_lag_interface:
+                cmd.extend(['--mac', f'{interface.mac_address}'])
+
+            # Specify --iftype if this is a special type of interface.
+            # Valid values are: bonding, bridge, loopback, management, oa, physical, public, virtual, vlan
             if (hasattr(interface, 'mgmt_only') and interface.mgmt_only and not is_boot_interface):
                 # mgmt_only is only an attribute for physical devices
-                # Valid values are: bonding, bridge, loopback, management, oa, physical, public, virtual, vlan
                 cmd.extend(['--iftype', 'management'])
+            elif is_lag_interface:
+                cmd.extend(['--iftype', 'bonding'])
 
             cmds.append(cmd)
 
@@ -193,6 +200,15 @@ class Netbox2Aquilon(SCDNetbox):
                     '--interface', f'{interface.name}',
                     '--boot',
                 ])
+
+            if is_lag_interface:
+                cmds.append([
+                    'update_interface',
+                    '--machine', f'{device.aq_machine_name}',
+                    '--interface', f'{interface.name}',
+                    '--master', f'{interface.lag.name}',
+                ])
+
         return cmds
 
     def _netbox_copy_addresses(self, device):
